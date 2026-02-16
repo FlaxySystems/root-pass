@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==========================================
-#        FlaxySystems VPS Toolkit v3
+#        FlaxySystems VPS Toolkit v4
 # ==========================================
 
 LOG_FILE="/var/log/flaxy-toolkit.log"
@@ -27,15 +27,19 @@ pause() {
 }
 
 restart_ssh() {
-    sshd -t || { echo -e "${RED}SSH Config Error! Fix before restart.${RESET}"; return; }
-    systemctl restart ssh 2>/dev/null || systemctl restart sshd
+    if sshd -t 2>/dev/null; then
+        systemctl restart ssh 2>/dev/null || systemctl restart sshd
+        echo -e "${GREEN}SSH Restarted Successfully${RESET}"
+    else
+        echo -e "${RED}SSH Config Error! Fix manually before restart.${RESET}"
+    fi
 }
 
 enable_root() {
     sed -i '/^PermitRootLogin/d' /etc/ssh/sshd_config
     echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
     restart_ssh
-    echo -e "${GREEN}Root SSH Enabled Successfully${RESET}"
+    echo -e "${GREEN}Root SSH Enabled${RESET}"
     pause
 }
 
@@ -43,7 +47,7 @@ disable_root() {
     sed -i '/^PermitRootLogin/d' /etc/ssh/sshd_config
     echo "PermitRootLogin no" >> /etc/ssh/sshd_config
     restart_ssh
-    echo -e "${GREEN}Root SSH Disabled Successfully${RESET}"
+    echo -e "${GREEN}Root SSH Disabled${RESET}"
     pause
 }
 
@@ -66,7 +70,7 @@ secure_ssh() {
     sed -i '/^PasswordAuthentication/d' /etc/ssh/sshd_config
     echo "PasswordAuthentication no" >> /etc/ssh/sshd_config
     restart_ssh
-    echo -e "${GREEN}Password login disabled (Key Only Enabled)${RESET}"
+    echo -e "${GREEN}Password login disabled (Key Only Mode)${RESET}"
     pause
 }
 
@@ -88,7 +92,7 @@ system_info() {
     echo "Hostname : $(hostname)"
     echo "Uptime   : $(uptime -p)"
     echo "Kernel   : $(uname -r)"
-    echo "CPU      : $(lscpu | grep 'Model name' | awk -F ':' '{print $2}')"
+    echo "CPU      : $(lscpu | awk -F: '/Model name/ {print $2}')"
     echo ""
     echo "RAM Usage:"
     free -h
@@ -116,28 +120,28 @@ ram_checker() {
     USED_RAM=$(free -h | awk '/Mem:/ {print $3}')
     FREE_RAM=$(free -h | awk '/Mem:/ {print $4}')
 
-    RAM_TYPE=$(dmidecode -t memory | grep "Type:" | grep -v "Unknown" | head -n 1 | awk '{print $2}')
-    RAM_SPEED=$(dmidecode -t memory | grep "Speed:" | grep -v "Unknown" | head -n 1 | awk '{print $2,$3}')
-    SLOTS=$(dmidecode -t memory | grep -c "Memory Device")
+    RAM_TYPE=$(dmidecode -t memory | awk -F: '/^\s*Type: DDR/ {print $2; exit}' | xargs)
+    RAM_SPEED=$(dmidecode -t memory | awk -F: '/Speed:/ && $2 !~ /Unknown/ {print $2; exit}' | xargs)
+    SLOT_COUNT=$(dmidecode -t memory | awk '/Memory Device/ {count++} END {print count}')
 
     echo ""
-    echo "Total RAM   : $TOTAL_RAM"
-    echo "Used RAM    : $USED_RAM"
-    echo "Free RAM    : $FREE_RAM"
+    echo "Total RAM    : $TOTAL_RAM"
+    echo "Used RAM     : $USED_RAM"
+    echo "Free RAM     : $FREE_RAM"
 
     if [ -z "$RAM_TYPE" ]; then
-        echo "RAM Type    : Unable to detect (Virtual VPS)"
+        echo "RAM Type     : Unable to detect (Virtual VPS)"
     else
-        echo "RAM Type    : $RAM_TYPE"
+        echo "RAM Type     : $RAM_TYPE"
     fi
 
     if [ -z "$RAM_SPEED" ]; then
-        echo "RAM Speed   : Not Available"
+        echo "RAM Speed    : Not Available"
     else
-        echo "RAM Speed   : $RAM_SPEED"
+        echo "RAM Speed    : $RAM_SPEED"
     fi
 
-    echo "Memory Slots: $SLOTS"
+    echo "Memory Slots : $SLOT_COUNT"
     pause
 }
 
