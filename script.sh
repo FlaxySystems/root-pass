@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==========================================
-#        FlaxySystems VPS Toolkit v4
+#        FlaxySystems VPS Toolkit v5
 # ==========================================
 
 LOG_FILE="/var/log/flaxy-toolkit.log"
@@ -36,10 +36,20 @@ restart_ssh() {
 }
 
 enable_root() {
+    echo -e "${YELLOW}Enabling Root SSH Login...${RESET}"
+
     sed -i '/^PermitRootLogin/d' /etc/ssh/sshd_config
     echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
+
+    sed -i '/^PasswordAuthentication/d' /etc/ssh/sshd_config
+    echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config
+
+    echo -e "${YELLOW}Set / Change Root Password:${RESET}"
+    passwd root
+
     restart_ssh
-    echo -e "${GREEN}Root SSH Enabled${RESET}"
+
+    echo -e "${GREEN}Root SSH Enabled & Password Set Successfully${RESET}"
     pause
 }
 
@@ -110,38 +120,45 @@ ram_checker() {
     clear
     echo -e "${CYAN}========= RAM Detailed Info =========${RESET}"
 
-    if ! command -v dmidecode &> /dev/null; then
-        echo -e "${YELLOW}Installing dmidecode...${RESET}"
-        apt update -y >/dev/null 2>&1
-        apt install dmidecode -y >/dev/null 2>&1
-    fi
-
     TOTAL_RAM=$(free -h | awk '/Mem:/ {print $2}')
     USED_RAM=$(free -h | awk '/Mem:/ {print $3}')
     FREE_RAM=$(free -h | awk '/Mem:/ {print $4}')
 
-    RAM_TYPE=$(dmidecode -t memory | awk -F: '/^\s*Type: DDR/ {print $2; exit}' | xargs)
-    RAM_SPEED=$(dmidecode -t memory | awk -F: '/Speed:/ && $2 !~ /Unknown/ {print $2; exit}' | xargs)
-    SLOT_COUNT=$(dmidecode -t memory | awk '/Memory Device/ {count++} END {print count}')
+    VIRT_TYPE=$(systemd-detect-virt)
+
+    if [ "$VIRT_TYPE" != "none" ]; then
+        RAM_TYPE="Virtualized RAM ($VIRT_TYPE)"
+        RAM_SPEED="Not Available"
+    else
+        if ! command -v dmidecode &> /dev/null; then
+            apt update -y >/dev/null 2>&1
+            apt install dmidecode -y >/dev/null 2>&1
+        fi
+        RAM_TYPE=$(dmidecode -t memory | awk -F: '/^\s*Type: DDR/ {print $2; exit}' | xargs)
+        RAM_SPEED=$(dmidecode -t memory | awk -F: '/Speed:/ && $2 !~ /Unknown/ {print $2; exit}' | xargs)
+    fi
+
+    SLOT_COUNT=$(dmidecode -t memory 2>/dev/null | grep -c "Memory Device")
 
     echo ""
-    echo "Total RAM    : $TOTAL_RAM"
-    echo "Used RAM     : $USED_RAM"
-    echo "Free RAM     : $FREE_RAM"
+    echo "Virtualization : $VIRT_TYPE"
+    echo "Total RAM      : $TOTAL_RAM"
+    echo "Used RAM       : $USED_RAM"
+    echo "Free RAM       : $FREE_RAM"
 
     if [ -z "$RAM_TYPE" ]; then
-        echo "RAM Type     : Unable to detect (Virtual VPS)"
+        echo "RAM Type       : Unable to detect"
     else
-        echo "RAM Type     : $RAM_TYPE"
+        echo "RAM Type       : $RAM_TYPE"
     fi
 
     if [ -z "$RAM_SPEED" ]; then
-        echo "RAM Speed    : Not Available"
+        echo "RAM Speed      : Not Available"
     else
-        echo "RAM Speed    : $RAM_SPEED"
+        echo "RAM Speed      : $RAM_SPEED"
     fi
 
-    echo "Memory Slots : $SLOT_COUNT"
+    echo "Memory Slots   : $SLOT_COUNT"
     pause
 }
 
@@ -152,13 +169,13 @@ menu() {
     echo "        FlaxySystems VPS Toolkit        "
     echo "========================================="
     echo -e "${RESET}"
-    echo "1) Enable Root SSH"
+    echo "1) Enable Root SSH (with Password)"
     echo "2) Disable Root SSH"
     echo "3) Create Sudo User"
     echo "4) Remove User"
     echo "5) Secure SSH (Key Only)"
     echo "6) System Information"
-    echo "7) RAM Checker (DDR Type)"
+    echo "7) RAM Checker (Advanced)"
     echo "8) Check Open Ports"
     echo "9) Update Server"
     echo "10) Exit"
