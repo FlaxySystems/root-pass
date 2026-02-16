@@ -1,54 +1,111 @@
 #!/bin/bash
 
-# ==============================
-# Root SSH Enable Script
-# ==============================
+# ==========================================
+#   FlaxySystems Root Management Script
+# ==========================================
 
-set -e
-
+LOG_FILE="/var/log/flaxy-root-tool.log"
 GREEN="\e[32m"
 RED="\e[31m"
 YELLOW="\e[33m"
+CYAN="\e[36m"
 RESET="\e[0m"
 
-echo -e "${GREEN}=====================================${RESET}"
-echo -e "${GREEN}   Root SSH Enable Script Starting   ${RESET}"
-echo -e "${GREEN}=====================================${RESET}"
-
-# Must be root
+# Root Check
 if [[ $EUID -ne 0 ]]; then
-   echo -e "${RED}Please run as root (sudo -i first)${RESET}"
-   exit 1
+    echo -e "${RED}Please run as root (sudo -i first)${RESET}"
+    exit 1
 fi
 
-# Backup ssh config
-echo -e "${YELLOW}Backing up sshd_config...${RESET}"
-cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak.$(date +%F-%T)
+# Logging
+exec > >(tee -a $LOG_FILE) 2>&1
 
-# Enable root login
-echo -e "${YELLOW}Enabling PermitRootLogin...${RESET}"
-if grep -q "^PermitRootLogin" /etc/ssh/sshd_config; then
-    sed -i 's/^PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
-else
-    echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
-fi
+pause() {
+    read -p "Press Enter to continue..."
+}
 
-# Enable password authentication
-echo -e "${YELLOW}Enabling PasswordAuthentication...${RESET}"
-if grep -q "^PasswordAuthentication" /etc/ssh/sshd_config; then
-    sed -i 's/^PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
-else
-    echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config
-fi
+enable_root_ssh() {
+    echo -e "${YELLOW}Enabling Root SSH Login...${RESET}"
 
-# Set root password
-echo -e "${YELLOW}Set new root password:${RESET}"
-passwd root
+    SSHD_CONFIG="/etc/ssh/sshd_config"
 
-# Restart SSH service
-echo -e "${YELLOW}Restarting SSH service...${RESET}"
-systemctl restart ssh 2>/dev/null || systemctl restart sshd
+    cp $SSHD_CONFIG ${SSHD_CONFIG}.bak.$(date +%F-%H%M%S)
 
-echo -e "${GREEN}=====================================${RESET}"
-echo -e "${GREEN} Root SSH Login Successfully Enabled ${RESET}"
-echo -e "${GREEN}=====================================${RESET}"
+    sed -i '/^PermitRootLogin/d' $SSHD_CONFIG
+    sed -i '/^PasswordAuthentication/d' $SSHD_CONFIG
+
+    echo "PermitRootLogin yes" >> $SSHD_CONFIG
+    echo "PasswordAuthentication yes" >> $SSHD_CONFIG
+
+    passwd root
+
+    sshd -t && systemctl restart ssh 2>/dev/null || systemctl restart sshd
+
+    echo -e "${GREEN}Root SSH Enabled Successfully!${RESET}"
+    pause
+}
+
+disable_root_ssh() {
+    echo -e "${YELLOW}Disabling Root SSH Login...${RESET}"
+
+    SSHD_CONFIG="/etc/ssh/sshd_config"
+
+    sed -i '/^PermitRootLogin/d' $SSHD_CONFIG
+    echo "PermitRootLogin no" >> $SSHD_CONFIG
+
+    sshd -t && systemctl restart ssh 2>/dev/null || systemctl restart sshd
+
+    echo -e "${GREEN}Root SSH Disabled Successfully!${RESET}"
+    pause
+}
+
+change_ssh_port() {
+    read -p "Enter new SSH port: " NEWPORT
+
+    SSHD_CONFIG="/etc/ssh/sshd_config"
+    sed -i '/^Port/d' $SSHD_CONFIG
+    echo "Port $NEWPORT" >> $SSHD_CONFIG
+
+    sshd -t && systemctl restart ssh 2>/dev/null || systemctl restart sshd
+
+    echo -e "${GREEN}SSH Port Changed to $NEWPORT${RESET}"
+    pause
+}
+
+install_fail2ban() {
+    echo -e "${YELLOW}Installing Fail2Ban...${RESET}"
+    apt update -y
+    apt install fail2ban -y
+    systemctl enable fail2ban
+    systemctl start fail2ban
+    echo -e "${GREEN}Fail2Ban Installed Successfully!${RESET}"
+    pause
+}
+
+show_menu() {
+    clear
+    echo -e "${CYAN}"
+    echo "========================================="
+    echo "      FlaxySystems Root Tool v1.0       "
+    echo "========================================="
+    echo -e "${RESET}"
+    echo "1) Enable Root SSH Login"
+    echo "2) Disable Root SSH Login"
+    echo "3) Change SSH Port"
+    echo "4) Install Fail2Ban"
+    echo "5) Exit"
+    echo ""
+}
+
+while true; do
+    show_menu
+    read -p "Select an option [1-5]: " choice
+    case $choice in
+        1) enable_root_ssh ;;
+        2) disable_root_ssh ;;
+        3) change_ssh_port ;;
+        4) install_fail2ban ;;
+        5) exit 0 ;;
+        *) echo -e "${RED}Invalid Option!${RESET}"; sleep 1 ;;
+    esac
+done
